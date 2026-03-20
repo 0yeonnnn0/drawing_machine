@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  --color-retro-bg: #f0f4f8;
+  --color-retro-white: #ffffff;
+  --color-retro-black: #1a1a1a;
+  --color-retro-gray: #d1d9e6;
+  --color-retro-blue: #4a90e2;
+  --color-retro-accent: #ff6b6b;
+
+  /* Catch Mind Palette */
+  --color-cm-yellow: #ffde59;
+  --color-cm-blue: #5ce1e6;
+  --color-cm-green: #7ed957;
+  --color-cm-pink: #ff66c4;
+  --color-cm-orange: #ff914d;
+  --color-cm-purple: #cb6ce6;
+}
+
+@layer base {
+  body {
+    @apply bg-[#f8f9fa] text-retro-black font-sans antialiased overflow-x-hidden;
+  }
+}
+
+@layer components {
+  .cm-card {
+    @apply bg-white border-3 border-black rounded-3xl p-6 shadow-[6px_6px_0px_rgba(0,0,0,1)];
+  }
+
+  .cm-button {
+    @apply px-6 py-3 bg-white border-3 border-black rounded-2xl active:translate-y-1 active:shadow-none transition-all duration-75 flex items-center justify-center gap-2 font-black uppercase tracking-wider text-sm shadow-[4px_4px_0px_rgba(0,0,0,1)];
+  }
+
+  .cm-button-primary {
+    @apply bg-cm-yellow text-black;
+  }
+
+  .cm-button-blue {
+    @apply bg-cm-blue text-black;
+  }
+
+  .cm-input {
+    @apply bg-white border-3 border-black rounded-xl p-3 outline-none focus:ring-0 font-bold;
+  }
+
+  .cm-panel {
+    @apply bg-[#eef2f7] border-3 border-black rounded-3xl overflow-hidden;
+  }
+
+  .cm-toolbar {
+    @apply bg-white border-3 border-black rounded-full px-6 py-3 flex items-center gap-4 shadow-[0px_8px_0px_rgba(0,0,0,0.1)];
+  }
+}
+
+/* Custom Cursor */
+.canvas-cursor {
+  cursor: crosshair;
+}
+
+/* Steps animation for retro feel */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.animate-pixel-blink {
+  animation: blink 1s steps(1) infinite;
+}
