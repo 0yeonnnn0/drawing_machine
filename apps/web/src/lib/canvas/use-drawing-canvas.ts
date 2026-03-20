@@ -7,19 +7,16 @@ import { DrawingEngine } from './drawing-engine';
 interface UseDrawingCanvasOptions {
   userId: string;
   canvasId: string;
-  onStrokeStart?: (stroke: Stroke) => void;
-  onStrokeContinue?: (strokeId: string, points: StrokePoint[]) => void;
-  onStrokeEnd?: (strokeId: string) => void;
+  onStrokeComplete?: (stroke: Stroke) => void;
   onCursorMove?: (x: number, y: number) => void;
 }
 
 export function useDrawingCanvas(options: UseDrawingCanvasOptions) {
-  const { userId, canvasId, onStrokeStart, onStrokeContinue, onStrokeEnd, onCursorMove } = options;
+  const { userId, canvasId, onStrokeComplete, onCursorMove } = options;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<DrawingEngine | null>(null);
   const isDrawingRef = useRef(false);
-  const currentStrokeIdRef = useRef<string | null>(null);
 
   const [tool, setTool] = useState<DrawTool>('pen');
   const [color, setColor] = useState('#000000');
@@ -44,7 +41,6 @@ export function useDrawingCanvas(options: UseDrawingCanvasOptions) {
     const parent = canvas.parentElement;
     if (parent) {
       resizeObserver.observe(parent);
-      // Initial sizing
       engineRef.current.resize(parent.clientWidth, parent.clientHeight);
     }
 
@@ -53,7 +49,6 @@ export function useDrawingCanvas(options: UseDrawingCanvasOptions) {
     };
   }, []);
 
-  // Pointer handlers
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     const engine = engineRef.current;
     if (!engine) return;
@@ -70,17 +65,11 @@ export function useDrawingCanvas(options: UseDrawingCanvasOptions) {
     if (!engine) return;
 
     const point = engine.toCanvasCoords(e.clientX, e.clientY);
-
-    // Emit cursor position regardless of drawing
     onCursorMove?.(point.x, point.y);
 
     if (!isDrawingRef.current) return;
-
-    const newPoints = engine.continueStroke(point);
-    if (newPoints && currentStrokeIdRef.current) {
-      onStrokeContinue?.(currentStrokeIdRef.current, newPoints);
-    }
-  }, [onCursorMove, onStrokeContinue]);
+    engine.continueStroke(point);
+  }, [onCursorMove]);
 
   const handlePointerUp = useCallback(() => {
     const engine = engineRef.current;
@@ -89,11 +78,10 @@ export function useDrawingCanvas(options: UseDrawingCanvasOptions) {
     isDrawingRef.current = false;
     const stroke = engine.endStroke();
     if (stroke) {
-      currentStrokeIdRef.current = stroke.id;
-      onStrokeStart?.(stroke);
-      onStrokeEnd?.(stroke.id);
+      // Emit completed stroke for socket broadcast
+      onStrokeComplete?.(stroke);
     }
-  }, [onStrokeStart, onStrokeEnd]);
+  }, [onStrokeComplete]);
 
   const undo = useCallback(() => {
     const engine = engineRef.current;

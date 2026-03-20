@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import type { CanvasParticipant, Stroke, StrokePoint } from '@doodleshare/shared';
+import type { CanvasParticipant, Stroke } from '@doodleshare/shared';
 import { getSocket, disconnectSocket } from './socket-client';
 import type { DrawingEngine } from '@/lib/canvas/drawing-engine';
 
@@ -17,30 +17,37 @@ interface UseCanvasSocketOptions {
   canvasId: string;
   userId: string;
   nickname: string;
+  enabled: boolean;
   getEngine: () => DrawingEngine | null;
 }
 
-export function useCanvasSocket({ canvasId, userId, nickname, getEngine }: UseCanvasSocketOptions) {
+export function useCanvasSocket({ canvasId, userId, nickname, enabled, getEngine }: UseCanvasSocketOptions) {
   const [participants, setParticipants] = useState<CanvasParticipant[]>([]);
   const [remoteCursors, setRemoteCursors] = useState<Map<string, CursorInfo>>(new Map());
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'reconnecting'>('disconnected');
   const cursorThrottleRef = useRef<number>(0);
 
   useEffect(() => {
+    if (!enabled || !userId || userId === 'anonymous') return;
+
     const socket = getSocket(userId);
 
-    socket.on('connect', () => {
+    const onConnect = () => {
       setConnectionStatus('connected');
       socket.emit('join_canvas', { canvasId, userId, nickname });
-    });
+    };
 
-    socket.on('disconnect', () => {
+    const onDisconnect = () => {
       setConnectionStatus('disconnected');
-    });
+    };
 
-    socket.io.on('reconnect_attempt', () => {
+    const onReconnectAttempt = () => {
       setConnectionStatus('reconnecting');
-    });
+    };
+
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    socket.io.on('reconnect_attempt', onReconnectAttempt);
 
     socket.on('participant_list', (list) => {
       setParticipants(list);
@@ -82,18 +89,17 @@ export function useCanvasSocket({ canvasId, userId, nickname, getEngine }: UseCa
       window.location.href = '/dashboard';
     });
 
-    // If not connected yet, connect
     if (!socket.connected) {
       socket.connect();
     } else {
-      // Already connected, join canvas
-      socket.emit('join_canvas', { canvasId, userId, nickname });
+      onConnect();
     }
 
     return () => {
       socket.emit('leave_canvas', { canvasId });
-      socket.off('connect');
-      socket.off('disconnect');
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+      socket.io.off('reconnect_attempt', onReconnectAttempt);
       socket.off('participant_list');
       socket.off('participant_joined');
       socket.off('participant_left');
@@ -103,17 +109,16 @@ export function useCanvasSocket({ canvasId, userId, nickname, getEngine }: UseCa
       socket.off('canvas_deleted');
       disconnectSocket();
     };
-  }, [canvasId, userId, nickname, getEngine]);
+  }, [canvasId, userId, nickname, enabled, getEngine]);
 
   const emitStroke = useCallback((stroke: Stroke) => {
     const socket = getSocket(userId);
     socket.emit('stroke_start', { canvasId, stroke });
-    socket.emit('stroke_end', { canvasId, strokeId: stroke.id });
   }, [canvasId, userId]);
 
   const emitCursorMove = useCallback((x: number, y: number) => {
     const now = Date.now();
-    if (now - cursorThrottleRef.current < 50) return; // throttle to 20fps
+    if (now - cursorThrottleRef.current < 50) return;
     cursorThrottleRef.current = now;
     const socket = getSocket(userId);
     socket.emit('cursor_move', { canvasId, x, y });

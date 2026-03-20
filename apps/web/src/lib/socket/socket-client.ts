@@ -10,7 +10,7 @@ let socket: TypedSocket | null = null;
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:4000';
 
 export function getSocket(userId: string): TypedSocket {
-  if (socket && socket.connected) return socket;
+  if (socket) return socket;
 
   socket = io(SERVER_URL, {
     auth: { userId },

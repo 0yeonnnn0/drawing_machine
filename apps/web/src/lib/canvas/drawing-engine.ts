@@ -14,18 +14,17 @@ export class DrawingEngine {
     this.dpr = window.devicePixelRatio || 1;
   }
 
-  /** Resize canvas to fill container, accounting for DPR */
   resize(width: number, height: number): void {
     this.dpr = window.devicePixelRatio || 1;
     this.canvas.width = width * this.dpr;
     this.canvas.height = height * this.dpr;
     this.canvas.style.width = `${width}px`;
     this.canvas.style.height = `${height}px`;
-    this.ctx.scale(this.dpr, this.dpr);
+    // Use setTransform (absolute) instead of scale (relative) to avoid accumulation
+    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.render();
   }
 
-  /** Convert page coordinates to canvas coordinates */
   toCanvasCoords(clientX: number, clientY: number): StrokePoint {
     const rect = this.canvas.getBoundingClientRect();
     return {
@@ -34,8 +33,8 @@ export class DrawingEngine {
     };
   }
 
-  /** Begin a new stroke */
-  startStroke(point: StrokePoint, tool: DrawTool, color: string, width: number, userId: string, canvasId: string): void {
+  /** Begin a new stroke — returns the Stroke object so caller can emit it */
+  startStroke(point: StrokePoint, tool: DrawTool, color: string, width: number, userId: string, canvasId: string): Stroke {
     this.currentStroke = {
       id: uuid(),
       canvas_id: canvasId,
@@ -47,16 +46,16 @@ export class DrawingEngine {
       created_at: new Date().toISOString(),
     };
 
-    // Draw first dot
     this.ctx.save();
     this.applyStrokeStyle(this.currentStroke);
     this.ctx.beginPath();
     this.ctx.arc(point.x, point.y, width / 2, 0, Math.PI * 2);
     this.ctx.fill();
     this.ctx.restore();
+
+    return this.currentStroke;
   }
 
-  /** Continue the current stroke */
   continueStroke(point: StrokePoint): StrokePoint[] | null {
     if (!this.currentStroke) return null;
     this.currentStroke.path_data.push(point);
@@ -64,7 +63,6 @@ export class DrawingEngine {
     const points = this.currentStroke.path_data;
     const len = points.length;
 
-    // Draw incremental segment
     this.ctx.save();
     this.applyStrokeStyle(this.currentStroke);
     this.ctx.beginPath();
@@ -76,7 +74,6 @@ export class DrawingEngine {
     return [point];
   }
 
-  /** Finalize the current stroke */
   endStroke(): Stroke | null {
     if (!this.currentStroke) return null;
     const stroke = this.currentStroke;
@@ -85,13 +82,11 @@ export class DrawingEngine {
     return stroke;
   }
 
-  /** Add a remote stroke (already completed) */
   addRemoteStroke(stroke: Stroke): void {
     this.strokes.push(stroke);
-    this.drawStroke(stroke);
+    this.render();
   }
 
-  /** Undo the last stroke by a given user */
   undo(userId: string): string | null {
     for (let i = this.strokes.length - 1; i >= 0; i--) {
       if (this.strokes[i].user_id === userId) {
@@ -103,7 +98,6 @@ export class DrawingEngine {
     return null;
   }
 
-  /** Remove a specific stroke by ID (for remote undo) */
   removeStroke(strokeId: string): void {
     const idx = this.strokes.findIndex(s => s.id === strokeId);
     if (idx !== -1) {
@@ -112,7 +106,6 @@ export class DrawingEngine {
     }
   }
 
-  /** Remove last stroke from a user (for remote undo without stroke ID) */
   removeLastStrokeByUser(userId: string): void {
     for (let i = this.strokes.length - 1; i >= 0; i--) {
       if (this.strokes[i].user_id === userId) {
@@ -123,24 +116,20 @@ export class DrawingEngine {
     }
   }
 
-  /** Load a snapshot (array of strokes) */
   loadSnapshot(strokes: Stroke[]): void {
     this.strokes = [...strokes];
     this.render();
   }
 
-  /** Get current strokes as snapshot */
   getSnapshot(): Stroke[] {
     return [...this.strokes];
   }
 
-  /** Clear the canvas */
   clear(): void {
     this.strokes = [];
     this.render();
   }
 
-  /** Export canvas as PNG blob */
   exportPNG(): Promise<Blob> {
     return new Promise((resolve, reject) => {
       this.canvas.toBlob(blob => {
@@ -150,7 +139,6 @@ export class DrawingEngine {
     });
   }
 
-  /** Full re-render */
   render(): void {
     const w = this.canvas.width / this.dpr;
     const h = this.canvas.height / this.dpr;
@@ -158,7 +146,6 @@ export class DrawingEngine {
     this.ctx.save();
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.ctx.clearRect(0, 0, w, h);
-    // White background
     this.ctx.fillStyle = '#ffffff';
     this.ctx.fillRect(0, 0, w, h);
 
@@ -177,7 +164,6 @@ export class DrawingEngine {
     const points = stroke.path_data;
 
     if (points.length === 1) {
-      // Single dot
       this.ctx.beginPath();
       this.ctx.arc(points[0].x, points[0].y, stroke.width / 2, 0, Math.PI * 2);
       this.ctx.fill();
@@ -195,9 +181,10 @@ export class DrawingEngine {
 
   private applyStrokeStyle(stroke: Stroke): void {
     if (stroke.tool === 'eraser') {
-      this.ctx.globalCompositeOperation = 'destination-out';
-      this.ctx.strokeStyle = 'rgba(0,0,0,1)';
-      this.ctx.fillStyle = 'rgba(0,0,0,1)';
+      // Paint white instead of destination-out to avoid transparent holes on re-render
+      this.ctx.globalCompositeOperation = 'source-over';
+      this.ctx.strokeStyle = '#ffffff';
+      this.ctx.fillStyle = '#ffffff';
     } else {
       this.ctx.globalCompositeOperation = 'source-over';
       this.ctx.strokeStyle = stroke.color;

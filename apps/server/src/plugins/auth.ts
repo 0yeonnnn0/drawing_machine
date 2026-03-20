@@ -14,8 +14,12 @@ export const authPlugin = fp(async function (fastify: FastifyInstance) {
 
   fastify.addHook('onRequest', async (request: FastifyRequest) => {
     const userId = request.headers['x-user-id'] as string | undefined;
+    const username = request.headers['x-user-name'] as string | undefined;
     if (userId) {
-      request.user = userStore.get(userId);
+      // getOrCreate restores the session even after server restart
+      request.user = username
+        ? userStore.getOrCreate(userId, username)
+        : userStore.get(userId);
     }
   });
 });

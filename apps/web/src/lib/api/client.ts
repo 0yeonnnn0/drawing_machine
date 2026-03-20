@@ -3,10 +3,15 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   // Get user ID from localStorage
   let userId: string | undefined;
+  let username: string | undefined;
   if (typeof window !== 'undefined') {
     try {
       const stored = localStorage.getItem('doodleshare_user');
-      if (stored) userId = JSON.parse(stored).id;
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        userId = parsed.id;
+        username = parsed.username;
+      }
     } catch {}
   }
 
@@ -15,6 +20,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers: {
       'Content-Type': 'application/json',
       ...(userId ? { 'x-user-id': userId } : {}),
+      ...(username ? { 'x-user-name': username } : {}),
       ...options.headers,
     },
   });

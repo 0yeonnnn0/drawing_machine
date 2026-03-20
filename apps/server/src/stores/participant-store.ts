@@ -27,6 +27,11 @@ export const participantStore = {
     return participant;
   },
 
+  findByUser(canvasId: string, userId: string): CanvasParticipant | undefined {
+    const list = participants.get(canvasId);
+    return list?.find(p => p.user_id === userId);
+  },
+
   getByCanvas(canvasId: string): CanvasParticipant[] {
     return participants.get(canvasId) || [];
   },

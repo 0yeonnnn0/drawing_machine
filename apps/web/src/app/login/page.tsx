@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/auth-context';
@@ -8,16 +9,26 @@ import { PixelCard } from '@/components/ui/pixel-card';
 export default function LoginPage() {
   const router = useRouter();
   const { login, loginAsGuest } = useAuth();
+  const [error, setError] = useState<string | null>(null);
 
   const handleGoogle = async () => {
-    // TODO: real Google OAuth
-    await login('user@example.com', 'ANGRYBIRD');
-    router.push('/dashboard');
+    try {
+      setError(null);
+      await login('user@example.com', 'ANGRYBIRD');
+      router.push('/dashboard');
+    } catch {
+      setError('Login failed. Please try again.');
+    }
   };
 
   const handleGuest = async () => {
-    await loginAsGuest();
-    router.push('/dashboard');
+    try {
+      setError(null);
+      await loginAsGuest();
+      router.push('/dashboard');
+    } catch {
+      setError('Could not connect to server.');
+    }
   };
 
   return (
@@ -27,6 +38,10 @@ export default function LoginPage() {
           <h2 className="text-4xl font-black tracking-tight">WELCOME BACK!</h2>
           <p className="font-bold text-sm opacity-40 uppercase tracking-widest">Choose your way to play</p>
         </div>
+
+        {error && (
+          <p className="text-red-500 font-black text-sm text-center bg-red-50 border-2 border-red-300 rounded-xl p-3">{error}</p>
+        )}
 
         <div className="flex flex-col gap-4">
           <button

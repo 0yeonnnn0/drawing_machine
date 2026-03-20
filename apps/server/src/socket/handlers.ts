@@ -14,15 +14,16 @@ export function registerSocketHandlers(io: Server<ClientToServerEvents, ServerTo
       currentCanvasId = canvasId;
       socket.join(canvasId);
 
-      // Notify room
-      const participants = participantStore.getByCanvas(canvasId);
-      const me = participants.find(p => p.user_id === userId);
+      // Find or create participant (prevents duplicates on rejoin/refresh)
+      let me = participantStore.findByUser(canvasId, userId);
       if (me) {
         participantStore.setOnline(canvasId, userId, true);
-        socket.to(canvasId).emit('participant_joined', me);
+      } else {
+        // Auto-create participant if not registered via REST API
+        me = participantStore.add(canvasId, userId, 'guest', nickname || 'Anonymous');
       }
 
-      // Send full participant list to joining client
+      socket.to(canvasId).emit('participant_joined', me);
       socket.emit('participant_list', participantStore.getByCanvas(canvasId));
     });
 

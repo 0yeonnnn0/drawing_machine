@@ -24,7 +24,12 @@ export default function DashboardPage() {
       return;
     }
     if (user) {
-      canvasApi.list().then(setCanvases).catch(() => {});
+      canvasApi.list().then(setCanvases).catch((err) => {
+        if (err.message?.includes('401') || err.message?.includes('Auth')) {
+          logout();
+          router.push('/login');
+        }
+      });
     }
   }, [user, isLoading, router]);
 

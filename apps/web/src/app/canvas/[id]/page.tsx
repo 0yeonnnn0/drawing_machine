@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   Menu, Users, Lock, Unlock, Share2, Download, Undo2,
@@ -30,7 +30,7 @@ export default function CanvasPage() {
   const params = useParams();
   const router = useRouter();
   const canvasId = params.id as string;
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const { toasts, addToast } = useToast();
 
   const [canvasData, setCanvasData] = useState<Canvas | null>(null);
@@ -38,8 +38,12 @@ export default function CanvasPage() {
   const [isPublic, setIsPublic] = useState(true);
   const [isOwner, setIsOwner] = useState(false);
 
-  const userId = user?.id || 'anonymous';
+  const userId = user?.id || '';
   const nickname = user?.username || 'Anonymous';
+
+  // Use refs to break circular dependency between drawing hook and socket hook
+  const emitStrokeRef = useRef<(stroke: any) => void>(() => {});
+  const emitCursorMoveRef = useRef<(x: number, y: number) => void>(() => {});
 
   const {
     canvasRef,
@@ -56,8 +60,8 @@ export default function CanvasPage() {
   } = useDrawingCanvas({
     userId,
     canvasId,
-    onCursorMove: (x, y) => emitCursorMove(x, y),
-    onStrokeStart: (stroke) => emitStroke(stroke),
+    onCursorMove: useCallback((x: number, y: number) => emitCursorMoveRef.current(x, y), []),
+    onStrokeComplete: useCallback((stroke: any) => emitStrokeRef.current(stroke), []),
   });
 
   const {
@@ -71,23 +75,30 @@ export default function CanvasPage() {
     canvasId,
     userId,
     nickname,
+    enabled: !!user,
     getEngine,
   });
 
-  // Fetch canvas data
+  // Keep refs in sync
+  emitStrokeRef.current = emitStroke;
+  emitCursorMoveRef.current = emitCursorMove;
+
+  // Fetch canvas data only when user is ready
   useEffect(() => {
+    if (!user) return;
+
     canvasApi.get(canvasId).then(canvas => {
       setCanvasData(canvas);
       setTitle(canvas.title);
       setIsPublic(canvas.is_public);
-      setIsOwner(canvas.owner_id === userId);
-      if (canvas.snapshot.length > 0) {
+      setIsOwner(canvas.owner_id === user.id);
+      if (Array.isArray(canvas.snapshot) && canvas.snapshot.length > 0) {
         loadSnapshot(canvas.snapshot);
       }
     }).catch(() => {
       router.push('/dashboard');
     });
-  }, [canvasId, userId, loadSnapshot, router]);
+  }, [canvasId, user, loadSnapshot, router]);
 
   const handleUndo = () => {
     undo();
@@ -98,21 +109,44 @@ export default function CanvasPage() {
     if (!isOwner) return;
     const next = !isPublic;
     setIsPublic(next);
-    await canvasApi.update(canvasId, { is_public: next });
+    try {
+      await canvasApi.update(canvasId, { is_public: next });
+    } catch {
+      setIsPublic(!next); // revert
+    }
   };
 
   const handleShare = async () => {
     if (!canvasData) return;
     const url = `${window.location.origin}/join/${canvasData.share_token}`;
-    await navigator.clipboard.writeText(url);
-    addToast('Link copied to clipboard!');
+    try {
+      await navigator.clipboard.writeText(url);
+      addToast('Link copied to clipboard!');
+    } catch {
+      addToast('Failed to copy link');
+    }
   };
 
   const handleTitleBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
-    if (!isOwner || e.target.value === title) return;
-    setTitle(e.target.value);
-    await canvasApi.update(canvasId, { title: e.target.value });
+    const newTitle = e.target.value;
+    if (!isOwner || newTitle === title) return;
+    const oldTitle = title;
+    setTitle(newTitle);
+    try {
+      await canvasApi.update(canvasId, { title: newTitle });
+    } catch {
+      setTitle(oldTitle); // revert
+    }
   };
+
+  // Wait for auth to load
+  if (isLoading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-[#f0f4f8]">
+        <p className="font-black text-xl animate-pixel-blink">LOADING...</p>
+      </div>
+    );
+  }
 
   const onlineParticipants = participants.filter(p => p.is_online);
 
@@ -130,6 +164,7 @@ export default function CanvasPage() {
           <div className="flex flex-col">
             <input
               defaultValue={title}
+              key={title} // re-mount when title changes from API
               onBlur={handleTitleBlur}
               readOnly={!isOwner}
               className="bg-transparent font-black uppercase text-lg outline-none border-b-2 border-transparent focus:border-black"
@@ -172,7 +207,6 @@ export default function CanvasPage() {
       </header>
 
       <div className="flex-1 flex relative overflow-hidden p-4 gap-4">
-        {/* Main Canvas Area */}
         <div className="flex-1 flex flex-col gap-4 relative">
           <main className="flex-1 cm-panel bg-white overflow-hidden relative shadow-[8px_8px_0px_rgba(0,0,0,0.05)]">
             <DrawingCanvas
